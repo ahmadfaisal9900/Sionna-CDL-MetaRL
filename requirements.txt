@@ -1,0 +1,5 @@
+sionna
+tensorflow
+matplotlib
+numpy
+tqdm

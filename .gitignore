@@ -1,3 +1,6 @@
 .env
 checkpoints
 logs
+CDL_with_NRX/awgn_autoencoder_weights_conventional_training
+CDL_with_NRX/awgn_autoencoder_results_cdl.pkl
+examples

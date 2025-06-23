@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 
 from sionna.phy.utils import sim_ber
-from MIMO_OFDM_NRX_Testing import (
+from CDL_With_MetaRL.MIMO_OFDM_Meta_RL_Testing import (
     UL_SIMS,
     training_batch_size,
     model_weights_path_conventional_training,

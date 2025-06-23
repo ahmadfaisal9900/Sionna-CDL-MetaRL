@@ -252,6 +252,7 @@ class NeuralModel(Block):
                                 pilot_ofdm_symbol_indices=self._pilot_ofdm_symbol_indices)
 
         self._n = int(self._rg.num_data_symbols * self._num_bits_per_symbol)
+        #print(f"Num data symbols: {self._rg.num_data_symbols}, ")
         self._k = int(self._n * self._coderate)
 
         self._ut_array = AntennaArray(num_rows=1,
@@ -313,15 +314,21 @@ class NeuralModel(Block):
     @tf.function # Run in graph mode. See the following guide: https://www.tensorflow.org/guide/function
     def call(self, batch_size, ebno_db):
 
-        no = ebnodb2no(ebno_db, self._num_bits_per_symbol, self._coderate, self._rg)
+        no = ebnodb2no(ebno_db, self._num_bits_per_symbol, self._coderate, resource_grid=self._rg)
+
         if self._training:
             c = self._binary_source([batch_size, 1, self._num_streams_per_tx, self._n])
+            #print(f"The shape of c is {c.shape}")
+            # Shape should be (32, 1, 4, 1440)
         else:
             b = self._binary_source([batch_size, 1, self._num_streams_per_tx, self._k])
             c = self._encoder(b)
         x = self._mapper(c)
+        # Shape of x is (32, 1, 4, 720)
+        #print(f"The shape of x is {x.shape}")
         x_rg = self._rg_mapper(x)
-
+        #Shape of x_rg should be (32, 1, 4, 14, 72)
+        #print(f"The shape of x_rg is {x_rg.shape}")
         if self._domain == "time":
             # Time-domain simulations
 
@@ -348,13 +355,23 @@ class NeuralModel(Block):
             # Frequency-domain simulations
 
             cir = self._cdl(batch_size, self._rg.num_ofdm_symbols, 1/self._rg.ofdm_symbol_duration)
+            for x in cir:
+                print(f"The shape of cir is {x.shape}")
+            # Shape of a is (32, 1, 4, 1, 8, 23, 72)
+            # Shape of tau is (32, 1, 1, 23)
+            #user antenna is 4
+            #bs antenna is 8
             h_freq = cir_to_ofdm_channel(self._frequencies, *cir, normalize=True)
-
+            #print(f"The shape of h_freq is {h_freq.shape}")
+            #num_rx_ant = 8
+            #num_tx_ant = 4
+            # Shape of h_freq is (32, 1, 8, 1, 4, 14, 72)
             if self._direction == "downlink":
                 x_rg, g = self._zf_precoder(x_rg, h_freq)
 
             y = self._channel_freq(x_rg, h_freq, no)
-
+            #the shape of y should be (32, 1, 8, 14, 72)
+            #print(f"The shape of y is {y.shape}")
         if self._perfect_csi:
             if self._direction == "uplink":
                 h_hat = self._remove_nulled_scs(h_freq)
@@ -362,12 +379,24 @@ class NeuralModel(Block):
                 h_hat = g
             err_var = 0.0
         else:
+            #check if no is still float
+            #print(f"no is of size {no.shape} and type {no.dtype}")
             h_hat, err_var = self._ls_est (y, no)
 
+            #h_hat should be (32, 1, 8, 1, 4, 14, 60) -> 12 are suppressed for guard and null
+            #print(f"The shape of h_hat is {h_hat.shape}")
+            # The shape of err_var is (32, 1, 4, 1, 8, 14, 60)
+            #print(f"The shape of err_var is {err_var.shape}")
         x_hat, no_eff = self._lmmse_equ(y, h_hat, err_var, no)
+        #print(f"The shape of x_hat is {x_hat.shape}")
+        # The shape of x_hat should be (32, 1, 8, 720)
+        #print(f"The shape of no_eff is {no_eff.shape}")
+        # The shape of no_eff should be (32, 1, 8, 720)
         llr = self._demapper(x_hat, no_eff)
-        print(f"The shape of ground truth (C) is {c.shape}")
-        llr_reshaped = tf.reshape(llr, [tf.shape(llr)[0], 1, 4, 1440])
+        #tf.print(f"The shape of ground truth (C) is {c.shape}")
+        #tf.print(f"The shape of LLR is {llr.shape}")
+        #llr_reshaped = tf.reshape(llr, [tf.shape(llr)[0], 1, 4, 1440])
+        llr_reshaped = llr
         if self._training:
             loss = self._bce(c, llr_reshaped)
             return loss
@@ -551,7 +580,7 @@ class Model(Block):
     @tf.function # Run in graph mode. See the following guide: https://www.tensorflow.org/guide/function
     def call(self, batch_size, ebno_db):
 
-        no = ebnodb2no(ebno_db, self._num_bits_per_symbol, self._coderate, self._rg)
+        no = ebnodb2no(ebno_db, self._num_bits_per_symbol, self._coderate, resource_grid= self._rg)
         b = self._binary_source([batch_size, 1, self._num_streams_per_tx, self._k])
         c = self._encoder(b)
         x = self._mapper(c)
